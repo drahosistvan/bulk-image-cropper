@@ -51,6 +51,83 @@ jobs:
           echo "Building on Windows..."
           npm run build
 
+      - name: Self-sign app on macOS
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          
+          APP_NAME="image-trimmer"
+          APP_DIR="dist/mac-arm64/${APP_NAME}.app"
+          ENTITLEMENTS="build/entitlements.mac.plist"
+          
+          # Ensure the app exists
+          if [ ! -d "$APP_DIR" ]; then
+            echo "App not found at $APP_DIR"
+            exit 1
+          fi
+          
+          # Create entitlements if missing (minimal example)
+          if [ ! -f "$ENTITLEMENTS" ]; then
+            mkdir -p build
+            cat > "$ENTITLEMENTS" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.cs.disable-library-validation</key><true/>
+            <key>com.apple.security.app-sandbox</key><false/>
+            <key>com.apple.security.files.user-selected.read-write</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          fi
+          
+          # Create a temporary keychain
+          KEYCHAIN="build-selfsign.keychain"
+          PASS=$(openssl rand -hex 16)
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          security list-keychains -s "$KEYCHAIN" $(security list-keychains | sed 's/^[ \t]*//;s/["]//g')
+          
+          # Generate a self-signed certificate for code signing
+          # Using openssl to create a key+cert and import it
+          CERT_SUBJ="/CN=Self-Signed Electron Code Signing/O=SelfSigned/C=US"
+          openssl req -x509 -newkey rsa:2048 -keyout selfsign.key -out selfsign.crt -days 365 -nodes -subj "$CERT_SUBJ"
+          # Convert to PKCS12 for import
+          openssl pkcs12 -export -out selfsign.p12 -inkey selfsign.key -in selfsign.crt -passout pass:"$PASS"
+          
+          # Import into keychain and allow codesign to use it without prompt
+          security import selfsign.p12 -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign -A
+          # Get the SHA-1 hash of the cert
+          CERT_SHA1=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Self-Signed Electron Code Signing" | sed -E 's/.* ([A-F0-9]{40}) .*/\1/' | head -n1)
+          if [ -z "$CERT_SHA1" ]; then
+            echo "Failed to locate imported self-signed identity"
+            security find-identity -v -p codesigning "$KEYCHAIN" || true
+            exit 1
+          fi
+          
+          echo "Using identity: $CERT_SHA1"
+          
+          # Sign the app with hardened runtime and entitlements
+          /usr/bin/codesign --force --deep --options=runtime \
+            --entitlements "$ENTITLEMENTS" \
+            --sign "$CERT_SHA1" \
+            "$APP_DIR"
+          
+          # Verify signature
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_DIR" || (echo "codesign verify failed" && exit 1)
+          spctl --assess --type execute --verbose=2 "$APP_DIR" || true
+          
+          # Remove quarantine (so it runs on your machine without extra steps)
+          xattr -dr com.apple.quarantine "$APP_DIR" || true
+          
+          # Optionally recreate DMG with the self-signed app
+          # You can skip this and just upload the .app as an artifact
+          DMG_PATH="dist/${APP_NAME}-selfsigned.dmg"
+          hdiutil create -volname "${APP_NAME}" -srcfolder "$APP_DIR" -ov -format UDZO "$DMG_PATH"
+
       - name: Publish artifacts to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         run: npx electron-builder --publish always
