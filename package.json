@@ -10,12 +10,12 @@
   "author": "<Your Company Name>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-org/image-trimmer.git"
+    "url": "git+https://github.com/drahosistvan/bulk-image-cropper.git"
   },
   "bugs": {
-    "url": "https://github.com/your-org/image-trimmer/issues"
+    "url": "https://github.com/drahosistvan/bulk-image-cropper/issues"
   },
-  "homepage": "https://github.com/your-org/image-trimmer#readme",
+  "homepage": "https://github.com/drahosistvan/bulk-image-cropper#readme",
   "scripts": {
     "start": "electron-forge start",
     "dev": "electron-forge start",

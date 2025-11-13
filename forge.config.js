@@ -28,7 +28,7 @@ export default async () => {
       new PublisherGithub({
         repository: {
           owner: 'drahosistvan',
-          name: 'bulk-image-trimmer'
+          name: 'bulk-image-cropper'
         },
         prerelease: false,
         draft: true
