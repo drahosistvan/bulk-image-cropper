@@ -141,7 +141,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
+.vite/
 # Electron Forge build output
 out/
 make/

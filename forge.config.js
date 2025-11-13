@@ -25,24 +25,22 @@ export default async () => {
     publishers: [],
     plugins: [
       new VitePlugin({
-        renderer: {
-          configFile: 'vite.config.ts',
-          entryPoints: [{
-            name: 'main_window',
-            html: 'index.html',
-            js: 'src/main.ts',
-            preload: { js: 'electron/preload.js' }
-          }]
-        },
-        main: {
-          entry: 'electron/main.js',
-          viteConfig: {
-            build: {
-              rollupOptions: { external: ['sharp', 'p-limit'] }
-            }
+        build: [
+          {
+            entry: 'electron/main.js',
+            config: 'vite.main.config.ts'
+          },
+          {
+            entry: 'electron/preload.js',
+            config: 'vite.preload.config.ts'
           }
-        },
-        preload: { input: 'electron/preload.js' }
+        ],
+        renderer: [
+          {
+            name: 'main_window',
+            config: 'vite.config.ts'
+          }
+        ]
       })
     ]
   };

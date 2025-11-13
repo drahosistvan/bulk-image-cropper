@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Bulk helper tool to trim transparent borders from images (internal company tool)",
-  "main": "electron/main.js",
+  "main": ".vite/build/main.js",
   "type": "module",
   "license": "UNLICENSED",
   "author": "<Your Company Name>",
