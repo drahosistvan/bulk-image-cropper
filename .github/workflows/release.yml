@@ -1,178 +1,61 @@
-name: Build and Release
+name: Release
 
 on:
   push:
     tags:
-      - "v*.*.*"        # push a tag like v1.0.0
+      - 'v*.*.*'
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  make-and-publish:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
-
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      npm_config_include_optional: "true"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
 
       - name: Install dependencies
-        run: |
-          npm ci --include=optional
-          npx electron-builder install-app-deps
+        run: npm ci
 
-      - name: Build (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          echo "Building on macOS..."
-          npm run build
+      - name: Typecheck
+        run: npm run typecheck
 
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          echo "Building on Windows..."
-          npm run build
-
-      - name: Self-sign app on macOS
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APP_NAME="image-trimmer"
-          APP_DIR="dist/mac-arm64/${APP_NAME}.app"
-          ENTITLEMENTS="build/entitlements.mac.plist"
-
-          echo "==> Checking app exists at: $APP_DIR"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "App not found at $APP_DIR"
-            ls -la dist || true
-            ls -la dist/mac-arm64 || true
-            exit 1
-          fi
-
-          # Create minimal entitlements if not present (good for Sharp native libs)
-          if [ ! -f "$ENTITLEMENTS" ]; then
-            echo "==> Creating default entitlements at $ENTITLEMENTS"
-            mkdir -p build
-            cat > "$ENTITLEMENTS" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>com.apple.security.cs.disable-library-validation</key><true/>
-            <key>com.apple.security.app-sandbox</key><false/>
-            <key>com.apple.security.files.user-selected.read-write</key><true/>
-          </dict>
-          </plist>
-          PLIST
-          fi
-
-          echo "==> Creating temporary keychain"
-          KEYCHAIN="build-selfsign.keychain-db"
-          PASS=$(openssl rand -hex 16)
-          security create-keychain -p "$PASS" "$KEYCHAIN"
-          security default-keychain -s "$KEYCHAIN"
-          security unlock-keychain -p "$PASS" "$KEYCHAIN"
-          # Keep only this keychain in search list to avoid ambiguity
-          security list-keychains -s "$KEYCHAIN"
-
-          echo "==> Creating an OpenSSL config with Code Signing EKU"
-          cat > openssl-codesign.cnf <<'CONF'
-          [ req ]
-          default_bits       = 2048
-          distinguished_name = req_distinguished_name
-          x509_extensions    = v3_req
-          prompt             = no
-
-          [ req_distinguished_name ]
-          C  = US
-          O  = SelfSigned
-          CN = Self-Signed Electron Code Signing
-
-          [ v3_req ]
-          keyUsage = critical, digitalSignature, keyEncipherment
-          extendedKeyUsage = codeSigning
-          subjectKeyIdentifier = hash
-          authorityKeyIdentifier = keyid,issuer
-          CONF
-
-          echo "==> Generating self-signed Code Signing certificate (with EKU)"
-          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout selfsign.key -out selfsign.crt -config openssl-codesign.cnf
-
-          echo "==> Creating PKCS#12 for import"
-          openssl pkcs12 -export -out selfsign.p12 -inkey selfsign.key -in selfsign.crt -passout pass:"$PASS"
-
-          echo "==> Importing certificate into keychain"
-          security import selfsign.p12 -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign -A
-
-          echo "==> Available signing identities (after import):"
-          security find-identity -v -p codesigning "$KEYCHAIN" || true
-
-          # Find the identity SHA-1; first try by CN, then any codesigning identity
-          CERT_SHA1=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -i "Self-Signed Electron Code Signing" | sed -E 's/.* ([A-F0-9]{40}) .*/\1/' | head -n1 || true)
-          if [ -z "${CERT_SHA1:-}" ]; then
-            CERT_SHA1=$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -E 's/.* ([A-F0-9]{40}) .*/\1/' | head -n1 || true)
-          fi
-
-          if [ -z "${CERT_SHA1:-}" ]; then
-            echo "ERROR: No valid codesigning identities found in $KEYCHAIN"
-            # Show certs and their EKUs for debugging
-            security find-certificate -a -p "$KEYCHAIN" | openssl x509 -noout -text | grep -i -A2 "Extended Key Usage" || true
-            exit 1
-          fi
-          echo "==> Using identity SHA1: $CERT_SHA1"
-
-          echo "==> Codesigning the app (hardened runtime)"
-          /usr/bin/codesign --force --deep --options=runtime \
-            --entitlements "$ENTITLEMENTS" \
-            --sign "$CERT_SHA1" \
-            "$APP_DIR"
-
-          echo "==> Verifying signature"
-          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_DIR" || (echo "codesign verification failed" && exit 1)
-          spctl --assess --type execute --verbose=2 "$APP_DIR" || true
-
-          echo "==> Removing quarantine (for local testing)"
-          xattr -dr com.apple.quarantine "$APP_DIR" || true
-
-          echo "==> Creating self-signed DMG"
-          DMG_PATH="dist/${APP_NAME}-selfsigned.dmg"
-          hdiutil create -volname "${APP_NAME}" -srcfolder "$APP_DIR" -ov -format UDZO "$DMG_PATH"
-
-          echo "==> Cleanup temp keys"
-          rm -f selfsign.key selfsign.crt selfsign.p12 openssl-codesign.cnf || true
-          # Optionally remove the keychain (uncomment to delete):
-          # security delete-keychain "$KEYCHAIN" || true
+      - name: Make artifacts (Electron Forge)
+        run: npm run make
 
       - name: Publish artifacts to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        run: npx electron-builder --publish always
+        run: npm run publish
 
-      - name: Upload dist artifacts
-        if: always()
+      - name: Upload make artifacts
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: ${{ runner.os }}-dist
+          name: ${{ runner.os }}-artifacts
           path: |
-            dist/**
-            dist/mac-arm64/image-trimmer.app
+            make/**
+            out/**
+          if-no-files-found: ignore
+
+  aggregate:
+    needs: make-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release summary
+        run: echo "All platform builds finished."

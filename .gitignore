@@ -141,3 +141,17 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Electron Forge build output
+out/
+make/
+# Forge makers artifacts
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.exe
+*.msi
+# macOS metadata
+.DS_Store

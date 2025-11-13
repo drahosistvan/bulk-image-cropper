@@ -51,14 +51,9 @@ function createWindow() {
     setMacDockIcon(icon);
 
     mainWindow = new BrowserWindow({
-        width: 900,
-        height: 900,
         icon,
-        resizable: false,          // optional: make it strictly fixed
-        minWidth: 900,             // optional if resizable is true
-        minHeight: 900,            // optional if resizable is true
-        maxWidth: 900,             // optional if resizable is true
-        maxHeight: 900,            // optional if resizable is true
+        resizable: true,
+        movable: true,
         backgroundColor: '#0b1020',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -68,11 +63,13 @@ function createWindow() {
         }
     });
 
-    const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+    // Support both legacy VITE_DEV_SERVER_URL and forge vite plugin ELECTRON_RENDERER_URL
+    const devServerUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL;
     if (devServerUrl) {
         mainWindow.loadURL(devServerUrl);
     } else {
-        mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+        // In production with forge+vite plugin, use the custom protocol registered by the plugin
+        mainWindow.loadURL('app://./index.html');
     }
 }
 

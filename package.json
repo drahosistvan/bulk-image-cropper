@@ -1,15 +1,41 @@
 {
   "name": "image-trimmer",
+  "productName": "Image Trimmer",
   "version": "1.0.0",
   "private": true,
+  "description": "Bulk helper tool to trim transparent borders from images (internal company tool)",
   "main": "electron/main.js",
   "type": "module",
+  "license": "UNLICENSED",
+  "author": "<Your Company Name>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/image-trimmer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/image-trimmer/issues"
+  },
+  "homepage": "https://github.com/your-org/image-trimmer#readme",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:electron\" \"npm:dev:vite\"",
-    "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
-    "dev:vite": "vite",
-    "build": "vite build && electron-builder",
-    "postinstall": "electron-builder install-app-deps"
+    "start": "electron-forge start",
+    "dev": "electron-forge start",
+    "make": "electron-forge make",
+    "package": "electron-forge package",
+    "publish": "electron-forge publish",
+    "typecheck": "tsc --noEmit",
+    "release": "standard-version",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s"
+  },
+  "keywords": [
+    "electron",
+    "image",
+    "trim",
+    "bulk",
+    "sharp",
+    "internal"
+  ],
+  "engines": {
+    "node": ">=20 <21"
   },
   "dependencies": {
     "p-limit": "^6.2.0",
@@ -17,45 +43,28 @@
     "vue": "^3.4.0"
   },
   "devDependencies": {
-    "@electron/notarize": "^2.1.0",
+    "@electron-forge/cli": "^7.4.0",
+    "@electron-forge/maker-deb": "^7.4.0",
+    "@electron-forge/maker-dmg": "^7.4.0",
+    "@electron-forge/maker-nsis": "^7.4.0",
+    "@electron-forge/maker-zip": "^7.4.0",
+    "@electron-forge/publisher-github": "^7.4.0",
+    "@electron-forge/plugin-vite": "^7.4.0",
+    "@types/node": "^20.11.30",
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^8.2.2",
-    "cross-env": "^7.0.3",
+    "conventional-changelog-cli": "^4.0.0",
     "electron": "^30.0.0",
-    "electron-builder": "^24.13.3",
     "postcss": "^8.5.6",
+    "standard-version": "^9.5.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.5.4",
-    "vite": "^5.4.0",
-    "wait-on": "^7.2.0"
+    "vite": "^5.4.0"
   },
-  "build": {
-    "appId": "com.example.image-trimmer",
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/sharp/",
-      "node_modules/@img/"
-    ],
-    "files": [
-      "dist/",
-      "electron/",
-      "!electron/**/*.map",
-      "build/",
-      "icons/"
-    ],
-    "mac": {
-      "category": "public.app-category.graphics-design",
-      "target": ["dmg", "zip"],
-      "icon": "icons/mac/icon.icns"
-    },
-    "win": {
-      "target": ["nsis", "zip"],
-      "icon": "icons/win/icon.ico"
-    },
-    "linux": {
-      "target": ["AppImage", "deb", "zip"],
-      "icon": "icons/png/1024x1024.png"
-    }
+  "config": {
+    "forge": "./forge.config.js"
+  },
+  "standard-version": {
+    "tagPrefix": "v"
   }
 }
