@@ -48,9 +48,7 @@ jobs:
         if: always()
         with:
           name: ${{ runner.os }}-artifacts
-          path: |
-            make/**
-            out/**
+          path: out/make/**/*
           if-no-files-found: ignore
 
   aggregate:

@@ -1,6 +1,7 @@
 // Electron Forge configuration with Vite + Sharp native module handling
-// Removed AppImage & RPM makers to avoid missing package errors
 import { VitePlugin } from '@electron-forge/plugin-vite';
+import { MakerZIP } from '@electron-forge/maker-zip';
+import { PublisherGithub } from '@electron-forge/publisher-github';
 import path from 'path';
 
 export default async () => {
@@ -20,9 +21,19 @@ export default async () => {
       executableName: 'image-trimmer'
     },
     rebuildConfig: {},
-    // Makers removed to avoid missing package errors; use `npm run package` for internal distribution.
-    makers: [],
-    publishers: [],
+    makers: [
+      new MakerZIP({}, ['darwin', 'linux', 'win32'])
+    ],
+    publishers: [
+      new PublisherGithub({
+        repository: {
+          owner: 'drahosistvan',
+          name: 'bulk-image-trimmer'
+        },
+        prerelease: false,
+        draft: true
+      })
+    ],
     plugins: [
       new VitePlugin({
         build: [
