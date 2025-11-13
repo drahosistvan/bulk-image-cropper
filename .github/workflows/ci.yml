@@ -28,8 +28,6 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
-      - name: Dry run make (package only)
-        run: npx electron-forge make --skip-package=false --platform=${{ runner.os == 'Windows' && 'win32' || runner.os == 'macOS' && 'darwin' || 'linux' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package
+        run: npm run package
 
