@@ -1,7 +1,7 @@
 {
   "name": "image-trimmer",
   "productName": "Image Trimmer",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Bulk helper tool to trim transparent borders from images (internal company tool)",
   "main": ".vite/build/main.cjs",
