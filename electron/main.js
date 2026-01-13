@@ -3,7 +3,40 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import sharp from 'sharp';
-import pLimit from 'p-limit';
+
+// Forge Vite plugin injects these globals:
+// - MAIN_WINDOW_VITE_DEV_SERVER_URL (dev mode)
+// - MAIN_WINDOW_VITE_NAME (production mode)
+/* global MAIN_WINDOW_VITE_DEV_SERVER_URL, MAIN_WINDOW_VITE_NAME */
+
+// Simple concurrency limiter (replacement for p-limit).
+function createLimiter(concurrency) {
+    const max = Math.max(1, Math.min(16, Number(concurrency) || 4));
+    let active = 0;
+    const queue = [];
+
+    const next = () => {
+        if (active >= max) return;
+        const job = queue.shift();
+        if (!job) return;
+        active += 1;
+        job().finally(() => {
+            active -= 1;
+            next();
+        });
+    };
+
+    return (fn) => new Promise((resolve, reject) => {
+        queue.push(async () => {
+            try {
+                resolve(await fn());
+            } catch (e) {
+                reject(e);
+            }
+        });
+        next();
+    });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +44,9 @@ const __dirname = path.dirname(__filename);
 // Resolve a path that works in dev and in packaged app
 function resolveAsset(relPath) {
     // When packaged, resources are under process.resourcesPath
-    const base = app.isPackaged ? process.resourcesPath : process.cwd();
+    // In dev (forge start), process.cwd() can be something else, so anchor to the repo root.
+    const devRoot = path.resolve(__dirname, '..');
+    const base = app.isPackaged ? process.resourcesPath : devRoot;
     return path.join(base, relPath);
 }
 
@@ -50,26 +85,45 @@ function createWindow() {
     const icon = getIcon();
     setMacDockIcon(icon);
 
+    const preloadPath = path.join(__dirname, 'preload.cjs');
+    console.log('[main] Preload path:', preloadPath);
+
     mainWindow = new BrowserWindow({
         icon,
         resizable: true,
         movable: true,
         backgroundColor: '#0b1020',
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: preloadPath,
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: true,
+            sandbox: false, // Try disabling sandbox if IPC is failing
         }
     });
 
-    // Support both legacy VITE_DEV_SERVER_URL and forge vite plugin ELECTRON_RENDERER_URL
-    const devServerUrl = process.env.ELECTRON_RENDERER_URL || process.env.VITE_DEV_SERVER_URL;
-    if (devServerUrl) {
-        mainWindow.loadURL(devServerUrl);
+    mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+        console.log('[main] did-fail-load', { code, desc, url });
+    });
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('[main] Renderer loaded successfully');
+    });
+
+    // In development, use the Vite dev server
+    // In production, load the built renderer from dist folder
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+        console.log('[main] Loading from dev server:', MAIN_WINDOW_VITE_DEV_SERVER_URL);
+        mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
-        // In production with forge+vite plugin, use the custom protocol registered by the plugin
-        mainWindow.loadURL('app://./index.html');
+        // Production: Load from dist folder
+        // main.cjs is in .vite/build/, so we need to go up two levels to get to app root where dist is
+        console.log('[main] Loading from packaged dist folder');
+        const distPath = path.join(__dirname, '../../dist/index.html');
+        console.log('[main] Dist path:', distPath);
+        mainWindow.loadFile(distPath);
+        // Enable DevTools in production for debugging
+        //mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
 }
 
@@ -129,7 +183,7 @@ ipcMain.handle('trim-images', async (evt, payload) => {
     // Emit initial progress
     mainWindow?.webContents.send('progress:update', { total, done: 0, currentFile: null });
 
-    const limit = pLimit(Math.max(1, Math.min(16, Number(concurrency) || 4)));
+    const limit = createLimiter(concurrency);
 
     const tasks = files.map((name) =>
         limit(async () => {
